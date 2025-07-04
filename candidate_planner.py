@@ -1,7 +1,8 @@
 import numpy as np
 import random
-from collections import deque
 import math
+from collections import deque
+import heapq
 
 class Planner:
     def __init__(self, map_shape: tuple[int, int], view_radius: int):
@@ -9,30 +10,18 @@ class Planner:
         self.view_radius = view_radius
         self.path_taken = []
         self.map_shape = map_shape
-        self.steps = 0  # 添加步数计数器
         
-        # Q-learning 参数
-        self.alpha = 0.1  # 学习率
-        self.gamma = 0.9  # 折扣因子
-        self.epsilon = 0.3  # 探索率
-        self.epsilon_decay = 0.999  # 探索率衰减
+        # 存储边界点（frontier points）
+        self.frontier_points = set()
+        # 存储目标点
+        self.targets = set()
+        # 当前路径
+        self.current_path = deque()
         
-        # Q-table: 使用字典存储
-        self.q_table = {}
+        # RRT参数
+        self.rrt_step_size = max(3, view_radius // 2)
+        self.rrt_max_nodes = 500
         
-        # 动作定义: 索引到方向映射
-        self.action_map = {
-            0: (0, 1),   # 上
-            1: (0, -1),  # 下
-            2: (1, 0),   # 右
-            3: (-1, 0)   # 左
-        }
-        
-        # 状态追踪
-        self.last_state = None
-        self.last_action = None
-        self.last_pos = None
-    
     def update_knowledge(self, current_pos: tuple[int, int], local_view: np.ndarray):
         r = self.view_radius
         x, y = current_pos
@@ -41,163 +30,279 @@ class Planner:
         y_start, y_end = max(0, y - r), min(h, y + r + 1)
         x_start, x_end = max(0, x - r), min(w, x + r + 1)
         
+        # 保存旧地图状态用于边界点更新
+        old_map = self.known_map.copy()
+        
+        # 更新已知地图
         self.known_map[y_start:y_end, x_start:x_end] = local_view
-
+        
+        # 更新边界点
+        self.update_frontier_points(old_map, current_pos)
+    
+    def update_frontier_points(self, old_map: np.ndarray, current_pos: tuple[int, int]):
+        """更新边界点集合（已知与未知的交界）"""
+        # 清除当前视野内的边界点（因为它们可能不再是边界）
+        r = self.view_radius
+        x, y = current_pos
+        h, w = self.known_map.shape
+        
+        y_start, y_end = max(0, y - r), min(h, y + r + 1)
+        x_start, x_end = max(0, x - r), min(w, x + r + 1)
+        
+        # 移除当前视野内的边界点
+        for py in range(y_start, y_end):
+            for px in range(x_start, x_end):
+                if (px, py) in self.frontier_points:
+                    self.frontier_points.discard((px, py))
+        
+        # 添加新的边界点
+        for y in range(h):
+            for x in range(w):
+                # 只检查新探索的区域
+                if old_map[y, x] == self.known_map[y, x]:
+                    continue
+                    
+                # 如果是自由空间，检查其邻居是否有未知区域
+                if self.known_map[y, x] == 0:
+                    for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                        nx, ny = x + dx, y + dy
+                        if 0 <= ny < h and 0 <= nx < w:
+                            if self.known_map[ny, nx] == -1:  # 未知邻居
+                                self.frontier_points.add((x, y))
+                                break
+    
     def plan_next_step(self, current_pos: tuple[int, int], all_possible_targets: list[tuple[int, int]]) -> tuple[int, int]:
-        self.steps += 1
         if not self.path_taken or self.path_taken[-1] != current_pos:
             self.path_taken.append(current_pos)
         
-        # 将目标转换为集合便于高效查找
-        target_set = set(all_possible_targets)
+        # 更新目标集合
+        self.targets = set(all_possible_targets)
         
-        # 如果当前位置就是目标，则直接返回
-        if current_pos in target_set and self.known_map[current_pos[1], current_pos[0]] == 0:
+        # 如果当前位置是目标，直接返回
+        if current_pos in self.targets and self.known_map[current_pos[1], current_pos[0]] == 0:
             return current_pos
         
-        # 1. 更新Q值（如果可能）
-        if self.last_pos is not None and self.last_action is not None:
-            # 计算奖励
-            reward = self.calculate_reward(self.last_pos, current_pos, target_set)
-            
-            # 获取新状态
-            new_state = self.get_state(current_pos)
-            
-            # 获取旧状态的Q值
-            old_q = self.q_table.get(self.last_state, {}).get(self.last_action, 0)
-            
-            # 估计未来最大Q值
-            max_future_q = max(self.q_table.get(new_state, {}).values()) if new_state in self.q_table else 0
-                
-            # Q-learning更新公式
-            new_q = old_q + self.alpha * (reward + self.gamma * max_future_q - old_q)
-            
-            # 更新Q-table
-            if self.last_state not in self.q_table:
-                self.q_table[self.last_state] = {}
-            self.q_table[self.last_state][self.last_action] = new_q
-            
-            # 衰减探索率
-            self.epsilon *= self.epsilon_decay
-        
-        # 2. 获取当前状态和可能动作
-        current_state = self.get_state(current_pos)
-        possible_actions = self.get_possible_actions(current_pos)
-        
-        # 3. 选择动作
-        if not possible_actions:
-            return current_pos  # 无有效动作
-        
-        # ε-贪心策略选择
-        if random.random() < self.epsilon:
-            next_action = random.choice(list(possible_actions.keys()))
-        else:
-            # 从Q-table中选择最优动作
-            q_values = self.q_table.get(current_state, {})
-            if q_values:
-                # 找最高Q值的动作
-                max_q = max(q_values.values())
-                best_actions = [a for a, q in q_values.items() if q == max_q and a in possible_actions]
-                
-                if best_actions:
-                    next_action = random.choice(best_actions)
-                else:
-                    # 后备：基于启发式选择
-                    next_action = self.heuristic_action(possible_actions, current_pos, target_set)
+        # 如果有当前路径且未完成，继续沿着路径移动
+        if self.current_path:
+            next_pos = self.current_path.popleft()
+            # 检查路径是否仍然有效（没有新发现的障碍）
+            if self.is_valid_move(current_pos, next_pos):
+                return next_pos
             else:
-                # 无Q值可用，使用启发式
-                next_action = self.heuristic_action(possible_actions, current_pos, target_set)
+                # 路径无效，清除并重新规划
+                self.current_path.clear()
         
-        # 4. 保存当前状态
-        self.last_state = current_state
-        self.last_action = next_action
-        self.last_pos = current_pos
+        # 尝试规划到已知目标点的路径
+        known_targets = [t for t in self.targets 
+                         if 0 <= t[1] < self.map_shape[0] and 
+                         0 <= t[0] < self.map_shape[1] and 
+                         self.known_map[t[1], t[0]] == 0]
         
-        # 5. 返回移动位置
-        return possible_actions[next_action]
+        if known_targets:
+            # 找到最近的目标点
+            closest_target = min(known_targets, 
+                                 key=lambda t: self.manhattan_distance(current_pos, t))
+            
+            # 使用A*规划到目标的路径
+            path = self.a_star(current_pos, closest_target)
+            if path:
+                self.current_path = deque(path)
+                if self.current_path:
+                    return self.current_path.popleft()
+        
+        # 如果没有已知目标，尝试规划到边界点的路径
+        if self.frontier_points:
+            # 使用RRT找到最近的边界点
+            closest_frontier = self.find_closest_frontier_rrt(current_pos)
+            if closest_frontier:
+                # 使用A*规划到边界点的路径
+                path = self.a_star(current_pos, closest_frontier)
+                if path:
+                    self.current_path = deque(path)
+                    if self.current_path:
+                        return self.current_path.popleft()
+        
+        # 最后尝试随机合法移动
+        return self.random_valid_move(current_pos)
     
-    def get_state(self, pos: tuple[int, int]) -> tuple:
-        """简化状态表示"""
-        x, y = pos
-        h, w = self.known_map.shape
+    def find_closest_frontier_rrt(self, start_pos: tuple[int, int]) -> tuple[int, int]:
+        """使用RRT算法快速找到最近的边界点"""
+        if not self.frontier_points:
+            return None
         
-        # 状态1: 位置离散化 (3x3网格)
-        grid_x = min(2, x // max(1, w // 3))
-        grid_y = min(2, y // max(1, h // 3))
+        # 创建RRT树
+        tree = {start_pos: None}  # 节点: 父节点
+        nodes = [start_pos]
         
-        # 状态2: 已知目标方向
-        target_dir_x, target_dir_y = 0, 0
-        for tx, ty in [(w//2, h//2)]:  # 简化：使用地图中心作为目标代理
-            target_dir_x = tx - x
-            target_dir_y = ty - y
+        for _ in range(self.rrt_max_nodes):
+            # 随机采样点
+            if random.random() < 0.3:  # 30%概率采样边界点
+                rand_point = random.choice(list(self.frontier_points))
+            else:
+                rand_point = (
+                    random.randint(0, self.map_shape[1] - 1),
+                    random.randint(0, self.map_shape[0] - 1)
+                )
+            
+            # 找到最近的树节点
+            nearest_node = min(nodes, key=lambda n: self.euclidean_distance(n, rand_point))
+            
+            # 向随机点方向移动一步
+            direction = self.get_direction(nearest_node, rand_point)
+            new_node = (
+                nearest_node[0] + int(direction[0] * self.rrt_step_size),
+                nearest_node[1] + int(direction[1] * self.rrt_step_size)
+            )
+            
+            # 确保新节点在地图范围内
+            new_node = (
+                max(0, min(self.map_shape[1] - 1, new_node[0])),
+                max(0, min(self.map_shape[0] - 1, new_node[1]))
+            )
+            
+            # 检查路径是否有效（无已知障碍）
+            if self.is_valid_path(nearest_node, new_node):
+                # 添加到树
+                tree[new_node] = nearest_node
+                nodes.append(new_node)
+                
+                # 检查是否到达边界点
+                if new_node in self.frontier_points:
+                    return new_node
         
-        # 离散化方向
-        dir_x = -1 if target_dir_x < 0 else (1 if target_dir_x > 0 else 0)
-        dir_y = -1 if target_dir_y < 0 else (1 if target_dir_y > 0 else 0)
+        # 如果没有找到边界点，返回最近的边界点
+        if self.frontier_points:
+            return min(self.frontier_points, key=lambda p: self.manhattan_distance(start_pos, p))
         
-        return (grid_x, grid_y, dir_x, dir_y)
+        return None
     
-    def get_possible_actions(self, pos: tuple[int, int]) -> dict:
-        """获取有效动作及其位置"""
-        x, y = pos
-        h, w = self.known_map.shape
-        actions = {}
+    def a_star(self, start: tuple[int, int], goal: tuple[int, int]) -> list:
+        """A*路径规划算法"""
+        if start == goal:
+            return []
         
-        for action_idx, (dx, dy) in self.action_map.items():
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < w and 0 <= ny < h:
-                # 允许移动到自由空间或未知区域（避免已知障碍物）
-                if self.known_map[ny, nx] in (-1, 0):
-                    actions[action_idx] = (nx, ny)
+        # 优先队列 (f_score, position)
+        open_set = []
+        heapq.heappush(open_set, (0, start))
         
-        return actions
+        # 记录路径
+        came_from = {}
+        
+        # 代价函数
+        g_score = {start: 0}
+        f_score = {start: self.manhattan_distance(start, goal)}
+        
+        while open_set:
+            _, current = heapq.heappop(open_set)
+            
+            if current == goal:
+                # 重建路径
+                path = []
+                while current != start:
+                    path.append(current)
+                    current = came_from[current]
+                path.reverse()
+                return path
+            
+            # 探索邻居
+            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                neighbor = (current[0] + dx, current[1] + dy)
+                
+                # 检查边界
+                if not (0 <= neighbor[1] < self.map_shape[0] and 
+                        0 <= neighbor[0] < self.map_shape[1]):
+                    continue
+                
+                # 检查是否可通过（自由空间或目标点）
+                if (self.known_map[neighbor[1], neighbor[0]] != 0 and 
+                    neighbor != goal):
+                    continue
+                
+                # 计算新代价
+                tentative_g = g_score[current] + 1
+                
+                # 如果找到更好的路径
+                if neighbor not in g_score or tentative_g < g_score[neighbor]:
+                    came_from[neighbor] = current
+                    g_score[neighbor] = tentative_g
+                    f_score[neighbor] = tentative_g + self.manhattan_distance(neighbor, goal)
+                    
+                    # 添加到开放集
+                    heapq.heappush(open_set, (f_score[neighbor], neighbor))
+        
+        # 无路径
+        return None
     
-    def calculate_reward(self, last_pos: tuple, current_pos: tuple, targets: set) -> float:
-        """计算奖励"""
-        # 如果到达目标
-        if current_pos in targets:
-            return 100.0
+    def random_valid_move(self, current_pos: tuple[int, int]) -> tuple[int, int]:
+        """随机选择合法移动"""
+        motions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+        random.shuffle(motions)
         
-        # 奖励探索新区域
-        reward = 0.0
-        if self.known_map[current_pos[1], current_pos[0]] == -1:
-            reward += 1.0  # 发现新区域奖励
+        for dx, dy in motions:
+            next_pos = (current_pos[0] + dx, current_pos[1] + dy)
+            if self.is_valid_move(current_pos, next_pos):
+                return next_pos
         
-        # 小幅惩罚移动（鼓励效率）
-        if last_pos != current_pos:
-            reward -= 0.01
-        
-        # 避免停滞惩罚
-        if last_pos == current_pos:
-            reward -= 0.1
-        
-        return reward
+        # 无合法移动时保持原位
+        return current_pos
     
-    def heuristic_action(self, possible_actions: dict, current_pos: tuple, targets: set) -> int:
-        """后备启发式策略"""
-        # 首先尝试向目标移动
-        min_dist = float('inf')
-        best_action = None
+    def is_valid_move(self, from_pos: tuple[int, int], to_pos: tuple[int, int]) -> bool:
+        """检查移动是否合法"""
+        x, y = to_pos
+        h, w = self.map_shape
         
-        for action_idx, new_pos in possible_actions.items():
-            # 计算到目标的曼哈顿距离
-            dist = sum(abs(nx - tx) for tx, ty in targets for nx, ny in [new_pos])
-            if dist < min_dist:
-                min_dist = dist
-                best_action = action_idx
+        # 检查边界
+        if not (0 <= y < h and 0 <= x < w):
+            return False
         
-        if best_action is not None:
-            return best_action
+        # 检查是否移动到已知障碍物
+        if self.known_map[y, x] == 1:
+            return False
         
-        # 后备：边界探索
-        for action_idx, new_pos in possible_actions.items():
-            nx, ny = new_pos
-            # 检查是否有未知邻居
-            for dx, dy in self.action_map.values():
-                nnx, nny = nx + dx, ny + dy
-                if 0 <= nnx < self.map_shape[1] and 0 <= nny < self.map_shape[0]:
-                    if self.known_map[nny, nnx] == -1:
-                        return action_idx
+        # 检查是否为相邻移动
+        dx = abs(from_pos[0] - to_pos[0])
+        dy = abs(from_pos[1] - to_pos[1])
+        return (dx == 1 and dy == 0) or (dx == 0 and dy == 1)
+    
+    def is_valid_path(self, from_pos: tuple[int, int], to_pos: tuple[int, int]) -> bool:
+        """检查两点之间的直线路径是否有效（无已知障碍）"""
+        # 使用Bresenham算法检查直线路径
+        x0, y0 = from_pos
+        x1, y1 = to_pos
+        dx = abs(x1 - x0)
+        dy = abs(y1 - y0)
+        sx = 1 if x0 < x1 else -1
+        sy = 1 if y0 < y1 else -1
+        err = dx - dy
         
-        # 最终后备：随机选择
-        return random.choice(list(possible_actions.keys()))
+        while x0 != x1 or y0 != y1:
+            # 检查当前点是否已知障碍
+            if (0 <= y0 < self.map_shape[0] and 
+                0 <= x0 < self.map_shape[1] and 
+                self.known_map[y0, x0] == 1):
+                return False
+                
+            e2 = 2 * err
+            if e2 > -dy:
+                err -= dy
+                x0 += sx
+            if e2 < dx:
+                err += dx
+                y0 += sy
+        
+        return True
+    
+    def get_direction(self, from_pos: tuple[int, int], to_pos: tuple[int, int]) -> tuple[float, float]:
+        """获取从from_pos到to_pos的单位方向向量"""
+        dx = to_pos[0] - from_pos[0]
+        dy = to_pos[1] - from_pos[1]
+        dist = max(1e-5, math.sqrt(dx*dx + dy*dy))
+        return (dx / dist, dy / dist)
+    
+    def manhattan_distance(self, a: tuple[int, int], b: tuple[int, int]) -> int:
+        """计算曼哈顿距离"""
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+    
+    def euclidean_distance(self, a: tuple[int, int], b: tuple[int, int]) -> float:
+        """计算欧几里得距离"""
+        return math.sqrt((a[0] - b[0])**2 + (a[1] - b[1])**2)
