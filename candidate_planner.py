@@ -16,7 +16,7 @@ class Planner:
         self.frontier_map = np.zeros(map_shape, dtype=bool)  # 前沿点标记
         self.explored_map = np.zeros(map_shape, dtype=bool)  # 已探索区域
         self.frontier_clusters = {}  # 前沿簇信息 {中心点: 簇大小}
-        self.path_plan = deque()  # 当前路径计划
+        self.path_plan = deque()  # 当前路径计划，队列
         self.last_pos = None  # 上一个位置
         self.target_visible = False  # 目标是否可见
         self.path_taken = []  # 历史路径
@@ -33,7 +33,7 @@ class Planner:
         self.cluster_points = []
         
         # 视野半径阈值，用于切换探索策略
-        self.CLUSTER_THRESHOLD = 20  # 视野半径大于此值使用集群优化
+        self.CLUSTER_THRESHOLD = 20  # 视野半径大于此值使用聚类优化
     
     def update_knowledge(self, current_pos: tuple[int, int], local_view: np.ndarray):
         """使用当前视野更新已知地图和前沿点信息"""
@@ -49,7 +49,7 @@ class Planner:
         self.known_map[y_start:y_end, x_start:x_end] = local_view
         self.explored_map[y_start:y_end, x_start:x_end] = True
         
-        # 计算需要更新的区域（扩大一圈以覆盖可能受影响的邻居）
+        # 计算需要更新的区域（扩大一圈以覆盖可能受影响的节点）
         y_low, y_high = max(0, y_start - 1), min(h, y_end + 1)
         x_low, x_high = max(0, x_start - 1), min(w, x_end + 1)
         
@@ -70,7 +70,7 @@ class Planner:
         # 更新前沿图
         self.frontier_map[y_low:y_high, x_low:x_high] = has_unknown_neighbor
         
-        # 只有当视野半径大于阈值时才进行集群优化
+        # 只有当视野半径大于阈值时才进行聚类优化
         if r > self.CLUSTER_THRESHOLD and np.any(has_unknown_neighbor):
             # 移除受影响区域内旧的簇信息
             self.remove_clusters_in_area((x_low, y_low), (x_high, y_high))
@@ -115,7 +115,7 @@ class Planner:
                 self.cluster_tree = cKDTree(self.cluster_points)
     
     def remove_clusters_in_area(self, top_left, bottom_right):
-        """移除指定区域内的簇信息（向量化优化版）"""
+        """移除指定区域内的簇信息"""
         x_min, y_min = top_left
         x_max, y_max = bottom_right
         
@@ -262,26 +262,37 @@ class Planner:
         return []  # 未找到前沿点
 
     def select_best_target(self, current_pos, possible_targets):
-        """选择价值最高的可达目标（考虑可见性和距离）"""
+        """选择价值最高的可达目标（优先可见目标，多个可见目标时选最近）"""
         if not possible_targets:
             return None
         
-        # 计算可见性价值（可见目标优先）
-        in_view_values = [
-            1.5 if (abs(t[0] - current_pos[0]) <= self.view_radius and 
-                    abs(t[1] - current_pos[1]) <= self.view_radius)
-            else 0.3
-            for t in possible_targets
+        # 情况1：只有一个目标点
+        if len(possible_targets) == 1:
+            return possible_targets[0]
+        
+        # 获取所有可见目标点
+        visible_targets = [
+            t for t in possible_targets
+            if (abs(t[0] - current_pos[0]) <= self.view_radius and 
+                abs(t[1] - current_pos[1]) <= self.view_radius)
         ]
         
-        # 计算曼哈顿距离
-        distances = [abs(t[0]-current_pos[0]) + abs(t[1]-current_pos[1]) for t in possible_targets]
+        # 情况2：有可见目标点
+        if visible_targets:
+            # 如果有多个可见目标，选择距离最小的
+            if len(visible_targets) > 1:
+                # 计算所有可见目标的距离
+                distances = [abs(t[0]-current_pos[0]) + abs(t[1]-current_pos[1]) 
+                        for t in visible_targets]
+                # 返回最近的目标
+                return visible_targets[np.argmin(distances)]
+            # 只有一个可见目标
+            return visible_targets[0]
         
-        # 综合评估（可见性权重更高）
-        scores = [in_view_values[i] - 0.2 * distances[i] for i in range(len(possible_targets))]
-        
-        # 返回最优目标
-        return possible_targets[np.argmax(scores)]
+        # 情况3：没有可见目标，选择所有目标中最近的
+        distances = [abs(t[0]-current_pos[0]) + abs(t[1]-current_pos[1]) 
+                for t in possible_targets]
+        return possible_targets[np.argmin(distances)]
     
     def select_best_frontier_cluster(self, current_pos):
         """选择最优前沿簇（平衡簇大小和距离，大视野优化）"""
@@ -291,7 +302,7 @@ class Planner:
         # 使用KD树高效查询最近邻
         current_arr = np.array([current_pos])
         k = min(10, len(self.cluster_points))
-        distances, indices = self.cluster_tree.query(current_arr, k=k)
+        distances, indices = self.cluster_tree.query(current_arr, k=k)#cluster_tree是由KDTree构建的
         
         if distances.size == 0:
             return None
@@ -309,8 +320,8 @@ class Planner:
             cluster_value = self.frontier_clusters[cluster_center]
             distance = distances[0][i]
             
-            # 得分 = 簇大小 / (距离^0.7 + 1)
-            score = cluster_value / (distance**0.7 + 0.1)
+            # 得分 = 簇大小 / (距离 + 0.001)
+            score = cluster_value / (distance + 0.001)
             
             if score > best_score:
                 best_score = score
@@ -351,7 +362,7 @@ class Planner:
                 self.path_plan = deque(frontier_path)
                 return self.plan_next_step(current_pos, all_possible_targets)
         else:
-            # 大视野策略：集群优化探索
+            # 大视野策略：聚类优化探索
             best_frontier = self.select_best_frontier_cluster(current_pos)
             if best_frontier:
                 path = self.a_star_search(current_pos, best_frontier)
