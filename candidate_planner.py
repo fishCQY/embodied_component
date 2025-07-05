@@ -55,67 +55,7 @@ class Planner:
         
         # 按距离排序边界点
         self.prioritized_frontier = sorted(new_frontier)
-    # 在Planner类中添加以下方法
-    def _get_obstacle_distance(self, x, y, search_radius=5):
-        """计算给定位置到最近障碍物的曼哈顿距离"""
-        min_dist = float('inf')
-        for dy in range(-search_radius, search_radius+1):
-            for dx in range(-search_radius, search_radius+1):
-                nx, ny = x + dx, y + dy
-                if not (0 <= ny < self.map_shape[0] and 0 <= nx < self.map_shape[1]):
-                    continue
-                if self.known_map[ny, nx] == 1:  # 障碍物
-                    dist = abs(dx) + abs(dy)  # 曼哈顿距离
-                    if dist < min_dist:
-                        min_dist = dist
-        return min_dist if min_dist < float('inf') else search_radius * 2
 
-    def _calculate_heuristic(self, x, y, reachable_targets):
-        """新型启发函数：结合目标距离和避障因素的加权启发值"""
-        # 1. 计算到目标的基础距离值
-        if reachable_targets:
-            target_dist = min(abs(x - tx) + abs(y - ty) for tx, ty in reachable_targets)
-        elif self.prioritized_frontier:
-            target_dist = self.prioritized_frontier[0][0]
-        else:
-            target_dist = 0
-        
-        # 2. 计算避障因子（到最近障碍物的距离）
-        obstacle_dist = self._get_obstacle_distance(x, y)
-        
-        # 3. 动态权重调整 - 在复杂区域提高避障权重
-        # 基于当前位置的环境特性动态调整权重
-        local_density = self._get_local_obstacle_density(x, y)
-        
-        # 避障权重：在狭窄区域赋予更高权重
-        # 目标权重：在开阔区域赋予更高权重
-        if local_density > 0.4:  # 狭窄迷宫区域
-            obstacle_weight = 0.7
-            target_weight = 0.3
-        else:  # 开阔区域
-            obstacle_weight = 0.3
-            target_weight = 0.7
-        
-        # 4. 综合启发值：组合避障距离和目标距离
-        # 注意：避障距离越大越好（离障碍物越远），所以使用加权和
-        return target_weight * target_dist - obstacle_weight * obstacle_dist
-
-    def _get_local_obstacle_density(self, x, y):
-        """计算局部障碍物密度（用于动态调整权重）"""
-        sample_radius = 3
-        total_cells = 0
-        obstacle_count = 0
-        
-        for dy in range(-sample_radius, sample_radius+1):
-            for dx in range(-sample_radius, sample_radius+1):
-                nx, ny = x + dx, y + dy
-                if not (0 <= ny < self.map_shape[0] and 0 <= nx < self.map_shape[1]):
-                    continue
-                total_cells += 1
-                if self.known_map[ny, nx] == 1:  # 障碍物
-                    obstacle_count += 1
-                    
-        return obstacle_count / total_cells if total_cells > 0 else 0
     def plan_next_step(self, current_pos: tuple[int, int], 
                       all_possible_targets: list[tuple[int, int]]) -> tuple[int, int]:
         if not self.path_taken or self.path_taken[-1] != current_pos:
