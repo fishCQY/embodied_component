@@ -16,7 +16,7 @@ def run_exploration_test(planner_class, test_config):
     true_map, start_pos, targets = data['grid_map'], tuple(data['start_pos']), {tuple(row) for row in data['target_positions']}
 
     planner = planner_class(map_shape=true_map.shape, view_radius=test_config['radius'])
-    
+
     current_pos = start_pos
     total_steps = 0
     start_time = time.time()
