@@ -1,0 +1,165 @@
+==================================================
+GRADING SUBMISSION FILE: 18_B_f4499a13-2acb-4456-b246-a82cb7cfa26d.py
+Problem: B - Maze Explorer
+==================================================
+
+--- Running Test Pair: case_maze_1.npz (Radius: 10) ---
+  LOOSE Limits: steps <= 2193, time <= 5s
+  STRICT Limits: steps <= 1755, time <= 1s
+  Result: Success in 1462 steps (4.40s)
+  Details: Success in 1462 steps, 4.40s.
+  -> Criteria met for LOOSE (1 point)
+  Points for this pair: 1
+--------------------
+
+--- Running Test Pair: case_maze_1.npz (Radius: 50) ---
+  LOOSE Limits: steps <= 2166, time <= 24s
+  STRICT Limits: steps <= 1733, time <= 2s
+  Result: Success in 1444 steps (10.87s)
+  Details: Success in 1444 steps, 10.87s.
+  -> Criteria met for LOOSE (1 point)
+  Points for this pair: 1
+--------------------
+
+--- Running Test Pair: case_maze_1.npz (Radius: 1000) ---
+  LOOSE Limits: steps <= 2166, time <= 24s
+  STRICT Limits: steps <= 1733, time <= 2s
+  Result: Success in 1444 steps (13.94s)
+  Details: Success in 1444 steps, 13.94s.
+  -> Criteria met for LOOSE (1 point)
+  Points for this pair: 1
+--------------------
+
+--- Running Test Pair: case_maze_2.npz (Radius: 10) ---
+  LOOSE Limits: steps <= 2367, time <= 4s
+  STRICT Limits: steps <= 1894, time <= 1s
+  Result: Timeout in 1353 steps (4.00s)
+  Details: Timeout after 4.00s
+  Points for this pair: 0
+--------------------
+
+--- Running Test Pair: case_maze_2.npz (Radius: 50) ---
+  LOOSE Limits: steps <= 2367, time <= 25s
+  STRICT Limits: steps <= 1894, time <= 2s
+  Result: Success in 1578 steps (11.83s)
+  Details: Success in 1578 steps, 11.83s.
+  -> Criteria met for LOOSE (1 point)
+  Points for this pair: 1
+--------------------
+
+--- Running Test Pair: case_maze_2.npz (Radius: 1000) ---
+  LOOSE Limits: steps <= 2367, time <= 21s
+  STRICT Limits: steps <= 1894, time <= 2s
+  Result: Success in 1578 steps (14.16s)
+  Details: Success in 1578 steps, 14.16s.
+  -> Criteria met for LOOSE (1 point)
+  Points for this pair: 1
+--------------------
+
+--- Running Test Pair: case_maze_3.npz (Radius: 10) ---
+  LOOSE Limits: steps <= 2436, time <= 5s
+  STRICT Limits: steps <= 1949, time <= 1s
+  Result: Success in 1624 steps (4.54s)
+  Details: Success in 1624 steps, 4.54s.
+  -> Criteria met for LOOSE (1 point)
+  Points for this pair: 1
+--------------------
+
+--- Running Test Pair: case_maze_3.npz (Radius: 50) ---
+  LOOSE Limits: steps <= 2433, time <= 15s
+  STRICT Limits: steps <= 1947, time <= 1s
+  Result: Success in 1622 steps (7.39s)
+  Details: Success in 1622 steps, 7.39s.
+  -> Criteria met for LOOSE (1 point)
+  Points for this pair: 1
+--------------------
+
+--- Running Test Pair: case_maze_3.npz (Radius: 1000) ---
+  LOOSE Limits: steps <= 2433, time <= 24s
+  STRICT Limits: steps <= 1947, time <= 2s
+  Result: Success in 1622 steps (15.27s)
+  Details: Success in 1622 steps, 15.27s.
+  -> Criteria met for LOOSE (1 point)
+  Points for this pair: 1
+--------------------
+
+--- Running Test Pair: case_maze_4.npz (Radius: 10) ---
+  LOOSE Limits: steps <= 2856, time <= 4s
+  STRICT Limits: steps <= 2285, time <= 1s
+  Result: Timeout in 1227 steps (4.01s)
+  Details: Timeout after 4.01s
+  Points for this pair: 0
+--------------------
+
+--- Running Test Pair: case_maze_4.npz (Radius: 50) ---
+  LOOSE Limits: steps <= 2856, time <= 33s
+  STRICT Limits: steps <= 2285, time <= 3s
+  Result: Success in 1904 steps (18.71s)
+  Details: Success in 1904 steps, 18.71s.
+  -> Criteria met for LOOSE (1 point)
+  Points for this pair: 1
+--------------------
+
+--- Running Test Pair: case_maze_4.npz (Radius: 1000) ---
+  LOOSE Limits: steps <= 2856, time <= 35s
+  STRICT Limits: steps <= 2285, time <= 4s
+  Result: Timeout in 1140 steps (35.01s)
+  Details: Timeout after 35.01s
+  Points for this pair: 0
+--------------------
+
+--- Running Test Pair: case_maze_5.npz (Radius: 10) ---
+  LOOSE Limits: steps <= 2979, time <= 8s
+  STRICT Limits: steps <= 2384, time <= 1s
+  Result: Timeout in 1412 steps (8.01s)
+  Details: Timeout after 8.01s
+  Points for this pair: 0
+--------------------
+
+--- Running Test Pair: case_maze_5.npz (Radius: 50) ---
+  LOOSE Limits: steps <= 2979, time <= 30s
+  STRICT Limits: steps <= 2384, time <= 3s
+  Result: Success in 1986 steps (27.32s)
+  Details: Success in 1986 steps, 27.32s.
+  -> Criteria met for LOOSE (1 point)
+  Points for this pair: 1
+--------------------
+
+--- Running Test Pair: case_maze_5.npz (Radius: 1000) ---
+  LOOSE Limits: steps <= 2979, time <= 60s
+  STRICT Limits: steps <= 2384, time <= 7s
+  Result: Success in 1986 steps (35.53s)
+  Details: Success in 1986 steps, 35.53s.
+  -> Criteria met for LOOSE (1 point)
+  Points for this pair: 1
+--------------------
+
+--- Running Test Pair: case_standard_1.npz (Radius: 10) ---
+  LOOSE Limits: steps <= 504, time <= 2s
+  STRICT Limits: steps <= 404, time <= 1s
+  Result: Timeout in 308 steps (2.00s)
+  Details: Timeout after 2.00s
+  Points for this pair: 0
+--------------------
+
+--- Running Test Pair: case_standard_1.npz (Radius: 50) ---
+  LOOSE Limits: steps <= 165, time <= 3s
+  STRICT Limits: steps <= 132, time <= 1s
+  Result: Success in 110 steps (1.47s)
+  Details: Success in 110 steps, 1.47s.
+  -> Criteria met for LOOSE (1 point)
+  Points for this pair: 1
+--------------------
+
+--- Running Test Pair: case_standard_1.npz (Radius: 1000) ---
+  LOOSE Limits: steps <= 162, time <= 2s
+  STRICT Limits: steps <= 130, time <= 1s
+  Result: Success in 108 steps (1.71s)
+  Details: Success in 108 steps, 1.71s.
+  -> Criteria met for LOOSE (1 point)
+  Points for this pair: 1
+--------------------
+
+==================================================
+FINAL SCORE: 13
+==================================================

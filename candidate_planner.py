@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import heapq
 from collections import deque
 
 class Planner:
@@ -30,6 +31,61 @@ class Planner:
                     boundary_points.append((nx, ny))
         return boundary_points
 
+    def a_star(self, start: tuple[int, int], goal: tuple[int, int]):
+        """A*算法路径规划，比BFS更快找到最短路径"""
+        if start == goal:
+            return [start]
+            
+        # 初始化开放列表（优先队列）
+        open_set = []
+        heapq.heappush(open_set, (0, start))
+        
+        # 跟踪路径
+        came_from = {}
+        
+        # 起点到各点的实际代价
+        g_score = {start: 0}
+        
+        while open_set:
+            _, current = heapq.heappop(open_set)
+            
+            # 如果到达目标点，重建路径
+            if current == goal:
+                path = [current]
+                while current != start:
+                    current = came_from[current]
+                    path.append(current)
+                path.reverse()
+                return path
+            
+            cx, cy = current
+            # 探索四个方向
+            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                nx, ny = cx + dx, cy + dy
+                neighbor = (nx, ny)
+                
+                # 边界检查
+                if not (0 <= ny < self.map_shape[0] and 0 <= nx < self.map_shape[1]):
+                    continue
+                
+                # 跳过障碍物
+                if self.known_map[ny, nx] == 1:
+                    continue
+                
+                # 计算新的代价
+                new_g = g_score[current] + 1
+                
+                # 如果这是更好的路径，更新路径
+                if neighbor not in g_score or new_g < g_score[neighbor]:
+                    came_from[neighbor] = current
+                    g_score[neighbor] = new_g
+                    # 计算启发式代价（曼哈顿距离）
+                    h_score = abs(nx - goal[0]) + abs(ny - goal[1])
+                    f_score = new_g + h_score
+                    heapq.heappush(open_set, (f_score, neighbor))
+        
+        return None  # 没有找到路径
+
     def plan_next_step(self, current_pos: tuple[int, int], all_possible_targets: list[tuple[int, int]]) -> tuple[int, int]:
         if not self.path_taken or self.path_taken[-1] != current_pos:
             self.path_taken.append(current_pos)
@@ -41,7 +97,19 @@ class Planner:
         if current_pos in target_set and self.known_map[current_pos[1], current_pos[0]] == 0:
             return current_pos
         
-        # 执行BFS进行路径规划
+        # 首先检查是否有已知目标点可以使用A*算法
+        for target in all_possible_targets:
+            tx, ty = target
+            if (0 <= ty < self.map_shape[0] and 
+                0 <= tx < self.map_shape[1] and
+                self.known_map[ty, tx] == 0):  # 确保目标点是已知空地
+                
+                # 使用A*算法规划到目标点的路径
+                path = self.a_star(current_pos, target)
+                if path and len(path) > 1:
+                    return path[1]  # 返回路径的第一步
+        
+        # 没有找到已知目标点，执行BFS进行探索
         queue = deque([current_pos])
         visited = {current_pos}
         parent = {current_pos: None}
@@ -50,7 +118,7 @@ class Planner:
         found_frontier = None
         
         # BFS搜索最近的目标或边界
-        while queue:
+        while queue and not found_target:  # 如果找到目标就提前退出
             x, y = queue.popleft()
             
             # 检查是否找到目标
@@ -79,16 +147,20 @@ class Planner:
                     queue.append(next_pos)
                     parent[next_pos] = (x, y)
         
-        # 回溯路径找到第一步移动
+        # 回溯路径找到第一步移动的函数
         def find_first_step(target):
             step = target
             while parent[step] != current_pos:
                 step = parent[step]
             return step
         
-        # 优先处理找到的目标
+        # 优先处理找到的目标（使用A*算法加速）
         if found_target:
-            return find_first_step(found_target)
+            path = self.a_star(current_pos, found_target)
+            if path and len(path) > 1:
+                return path[1]  # 使用A*返回下一步
+            else:
+                return find_first_step(found_target)  # 如果A*失败则回退到BFS方法
         
         # 其次处理边界点
         if found_frontier:
